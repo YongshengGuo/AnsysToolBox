@@ -66,20 +66,19 @@ class Material(Definition):
 #         self._info.update("self", self)
         self._info.update("Name",self.name)
         self._info.update("Array", _array)
-        
-        map2 = {}
-        map2.update({"IsMetal":{
+
+        maps.update({"IsMetal":{
             "Key":"self",
             "Get":lambda s: s.isConductor()
             }})
         
-        map2.update({"IsDielectric":{
+        maps.update({"IsDielectric":{
             "Key":"self",
             "Get":lambda s: not s.isConductor()
             }})
         
         self._info.update("self", self)    
-        self._info.setMaps(map2)
+        self._info.setMaps(maps)
         self.maps = maps
         self.parsed = True
 
@@ -280,6 +279,7 @@ class Materials(Definitions):
         e_infi = dk-0.5*K*math.log(wB**2/w1**2+1)
         e_delta = 10*df*e_infi
         fA = fB/math.exp(e_delta/K)
+        
         log.info("Djordjevic-Sarkar Model Parameter:\n",
                  "e_infi:%s "%e_infi,
                  "e_delta:%s "%e_delta,
@@ -313,6 +313,86 @@ class Materials(Definitions):
         material.update()
         self.push(material.name)
         return material
+        
+        
+    def addHfssVariableDSModle(self,name,dk=4,df=0.02,f1=1e9,cond_dc=1e-12,fB=10**12/(2*math.pi)):
+        '''
+        Note that the frequency unit in the formula is GHz.
+
+        e_freq（介电常数频变）：
+        e_freq=
+        $dk-0.5*(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))*ln((2*pi*$fB*1e9)**2/(2*pi*$fA*1e9)**2+1)+(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))/2*ln((($fB*1e9)**2+Freq**2)/(($fB*1e9/exp(10*$df*($dk-0.5*(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))*ln((2*pi*$fB*1e9)**2/(2*pi*$fA*1e9)**2+1))/(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))))**2+Freq**2))
+
+        cond_freq（电导率频变）：
+        cond_freq=
+        $cond_dc+2*pi*Freq*e0*(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))*(atan(Freq/($fB*1e9/exp(10*$df*($dk-0.5*(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9)))*ln((2*pi*$fB*1e9)**2/(2*pi*$fA*1e9)**2+1))/(($dk*$df-$cond_dc/(2*pi*$fA*1e9*e0))/atan(2*pi*$fB*1e9/(2*pi*$fA*1e9))))))-atan(Freq/($fB*1e9)))
+
+        step1: 创建变量fA，fB，dk，df，cond_dc，增加${name}_前缀， 比如 ${name}_fA, ${name}_fB, ${name}_dk, ${name}_df, ${name}_cond_dc
+        step2: 创建变量 self.layout.Variables.add(var,val)，增加${name}_前缀
+        step3: 创建材料，DK= e_freq, Cond=cond_freq
+        
+        '''
+        prefix = "%s_" % name
+
+        dk_var = prefix + "dk"
+        df_var = prefix + "df"
+        fA_var = prefix + "fA"
+        fB_var = prefix + "fB"
+        cond_var = prefix + "cond_dc"
+
+        self.layout.Variables.add(dk_var, dk)
+        self.layout.Variables.add(df_var, df)
+        self.layout.Variables.add(fA_var, f1)
+        self.layout.Variables.add(fB_var, fB)
+        self.layout.Variables.add(cond_var, cond_dc)
+
+        e_freq = (
+            "{dk}-0.5*((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/"
+            "atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))*"
+            "ln((2*pi*{fB}*1e9)**2/(2*pi*{fA}*1e9)**2+1)+"
+            "((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/"
+            "atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))/2*"
+            "ln((({fB}*1e9)**2+Freq**2)/((((({fB}*1e9)/exp(10*{df}*({dk}-0.5*((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/"
+            "atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))*ln((2*pi*{fB}*1e9)**2/(2*pi*{fA}*1e9)**2+1))/"
+            "((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9)))))))**2+Freq**2))"
+        ).format(
+            dk=dk_var,
+            df=df_var,
+            cond_dc=cond_var,
+            fA=fA_var,
+            fB=fB_var,
+        )
+        cond_freq = (
+            "{cond_dc}+2*pi*Freq*e0*((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/"
+            "atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))"
+            "*(atan(Freq/((({fB}*1e9)/exp(10*{df}*({dk}-0.5*((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/"
+            "atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))*ln((2*pi*{fB}*1e9)**2/(2*pi*{fA}*1e9)**2+1))/"
+            "((({dk}*{df}-{cond_dc}/(2*pi*{fA}*1e9*e0))/atan(2*pi*{fB}*1e9/(2*pi*{fA}*1e9))))))))"
+            "-atan(Freq/({fB}*1e9)))"
+        ).format(
+            dk=dk_var,
+            df=df_var,
+            cond_dc=cond_var,
+            fA=fA_var,
+            fB=fB_var,
+        )
+        
+        log.info("Note that the frequency unit in the formula is GHz. ",)
+
+        log.info("Djordjevic-Sarkar Model Parameter:\n",
+                 "DK:%s\n" % e_freq,
+                 "Cond:%s" % cond_freq,
+                 )
+
+        material = self.create({
+            "Name":name,
+            "DK":e_freq,
+            "Cond":cond_freq
+            })
+        material.update()
+        self.push(material.name)
+        return material
+        
         
     def addHFSSDSModle2(self,name,dk=4,df=0.02,f1=1e9,cond_dc=1e-12,fB=10**12/(2*math.pi)):
         '''

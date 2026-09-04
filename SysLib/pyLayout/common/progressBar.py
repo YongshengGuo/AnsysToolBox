@@ -26,6 +26,10 @@ class ProgressBar(object):
         self.event = None
         
     def showPercent(self,pos=None):
+        '''
+        当指定数量时使用，显示进度百分比
+        '''
+        
         if self.start == None:
             self.start = time.time()
         if pos==None:
@@ -117,11 +121,19 @@ class ProgressBar(object):
 
                 
     def showProgress(self):
+        '''
+        不指定数据长度，只显示进度条，指示状态信息
+        '''
+        
+        
         self.event = Event()
         thread1 = Thread(target=self._animatedProgress, args=(self.prompt,self.event))
-        thread1.setDaemon(True)
+        # Prefer modern API and keep compatibility with Python 2.7.
+        try:
+            thread1.daemon = True #3.7
+        except AttributeError:
+            thread1.setDaemon(True) #2.7
         thread1.start()
-        
 #         thread.join()
         
     def stop(self):

@@ -31,13 +31,6 @@
     _definitionDict["D"] 或者 _definitionDict["D:*"] 返回所有介质
     
 
-  
-get component information from oEditor.GetComponentInfo API
-
-"layerInfo":['Type: signal', 'TopBottomAssociation: Neither', 'Color: 16711680d', 'IsVisible: true', '  IsVisibleShape: true',
- '  IsVisiblePath: true', '  IsVisiblePad: true', '  IsVisibleHole: true', '  IsVisibleComponent: true', 'IsLocked: false', 
- 'LayerId: 1', 'Index: 1', 'LayerThickness: 3.556e-05', 'IsIgnored: false', 'NumberOfSublayers: 1', 'Material0: copper', 'FillMaterial0: air', 
- 'Thickness0: 3.556e-05meter', 'LowerElevation0: 0.0016256']
 """
 
 
@@ -102,7 +95,7 @@ class Layer(Definition):
                 "SideRoughnessType":"SideRoughness0 Type",
                 "SideRoughness":"SideRoughness0",
                 "UseRoughness":"UseR",
-                "Roughness":{"Key":("Roughness0","BottomRoughness0","SideRoughness0"),"Get": lambda T,B,S: T,"Set": lambda x: [x]*3},
+                "Roughness":{"Key":"self","Get": lambda s:s.Roughness0 ,"Set": lambda s,v:s.setRoughness(v)},
                 "RoughnessType":{"Key":("Roughness0 Type","BottomRoughness0 Type","SideRoughness0 Type"),"Get": lambda T,B,S: T,"Set": lambda x: [x]*3},
                 "EtchAngle":{"Key":"EtchFactor","Get": lambda x: math.degrees(math.atan(float(x))),"Set": lambda x: math.tan(math.radians(float(x)))},
                 }
@@ -118,7 +111,7 @@ class Layer(Definition):
 
 
     def __repr__(self):
-        return "Layer Object: Layer(name={}, layer_type={}, index={}, thickness={})".format(self.name, self["Type"], self["LayerId"], self["Thickness0"])
+        return "Layer Object: Layer(name={}, layer_type={}, index={}, thickness={})".format(self.name, self["Type"], self["LayerId"], self["LayerThickness"])
     
 
     @property
@@ -260,13 +253,13 @@ class Layer(Definition):
         #FillMaterial 'Type: dielectric'  'Type: signal'
         maps.update({"LayerDK":{
             "Key":"self",
-            "Get":lambda s:s.layout.Materials[s.Material].DK if self.Type == "dielectric" else s.layout.Materials[s.FillMaterial].DK 
+            "Get":lambda s:s.layout.Materials[s.Material].DK if self.Type == "dielectric" else (s.layout.Materials[s.FillMaterial].DK if s.FillMaterial else "")
             }})
         
         
         maps.update({"LayerDF":{
             "Key":"self",
-            "Get":lambda s:s.layout.Materials[s.Material].DF if self.Type == "dielectric" else s.layout.Materials[s.FillMaterial].DF
+            "Get":lambda s:s.layout.Materials[s.Material].DF if self.Type == "dielectric" else (s.layout.Materials[s.FillMaterial].DF if s.FillMaterial else "")
             }})
         
         maps.update({"LayerCond":{
@@ -283,7 +276,7 @@ class Layer(Definition):
         _array = ArrayStruct([])
         self._info.update("Name",self.name)
         self._info.update("Array", _array)
-        self._info.update("self", self)    
+        self._info.update("self", self) 
         self._info.setMaps(maps)
 
         self.parsed = True
@@ -473,19 +466,28 @@ class Layer(Definition):
         
     def setRoughness(self,value):
         '''
-        str: '0.5um', '0.5um:2.9'
+        'SideRoughness0: 0.5um, 2.9'
+        str: '0.5um', '0.5um,2.9', '0.5um;0.5um;0.5um'
         list: ['0.5um', '0.5um', '0.5um']
         '''
+        #如果value是str，使用‘，’进行分割，如果分割后不足三个值，则使用最后一个值填充，大于三个值报错
         if isinstance(value, str):
-            self._info.update("Roughness0", value)
-            self._info.update("BottomRoughness0", value)
-            self._info.update("SideRoughness0", value)
-        elif isinstance(value, (list,tuple)) and len(value)==3:
+            parts = value.split(';')
+            if len(parts) == 1:
+                parts = parts * 3
+            elif len(parts) == 2:
+                parts.append(parts[-1])
+            elif len(parts) > 3:
+                log.exception("routhness input msut be as '0.5um' or '0.5um,2.9' or '0.5um;0.5um;0.5um'")
+            value = parts
+
+        if isinstance(value, (list,tuple)) and len(value)==3:
             self._info.update("Roughness0", value[0])
             self._info.update("BottomRoughness0", value[1])
             self._info.update("SideRoughness0", value[2])
+            self._info.update("UseRoughness", True)
         else:
-            log.exception("routhness input msut be as '0.5um' or '0.5um:2.9' or ['0.5um','0.5um','0.5um']")           
+            log.exception("routhness input msut be as '0.5um' or '0.5um,2.9' or '0.5um;0.5um;0.5um'")
             
 
     def offLayer(self,offset = 0, type = "signal"):
@@ -850,8 +852,8 @@ class Layers(Definitions):
     def setLayerDatas(self,layersInfo,mode = 0):
         '''
         layersInfo:
-        - {Name: SURFACE,Type: signal, Material: copper, FillMaterial: M4 ,Thickness: 3.556e-05, Roughness: 0.5um,2.9 ,DK: 4,DF: 0.02, Cond: 5.8e7, EtchFactor: 2.5}
-        - {Name: SURFACE,Type: dielectric, Material: M4 ,Thickness: 3.556e-05,DK: 4,DF: 0.02}
+        - {Name: SURFACE,Type: signal, Material: copper, FillMaterial: M4 ,Thickness: 3.556e-05, Roughness: 0.5um,2.9 ,DK: 4,DF: 0.02,Freq: 1Ghz, Cond: 5.8e7, EtchFactor: 2.5}
+        - {Name: SURFACE,Type: dielectric, Material: M4 ,Thickness: 3.556e-05,DK: 4,DF: 0.02,Freq: 1Ghz}
         
         mode:
         0(Auto): automatic, if signal layers and dielectric Layers have same count, will be update by index. else will update by name and will be ignore if layer name not in layout
@@ -1007,9 +1009,23 @@ class Layers(Definitions):
                 log.info("layer name: '%s' not found, ignore."% inputDict["Name"])   
     
     @ProcessTime
-    def loadFromDict(self,layersInfo):
+    def loadFromDict(self,layersInfo,mode=3):
         '''
-        强制更新,给定全部信息
+        mode=3 强制更新,给定全部信息
+        layersInfo:
+        - {Name: SURFACE,Type: signal, Cond:5.8e7 ,Thickness: 3.556e-05, Roughness: 0.5um,2.9um, 
+            DK: 4,DF: 0.02,Freq: 1Ghz, Cond: 5.8e7, EtchFactor: 2.5,EtchAngle:75}
+        
+        mode: 
+        0(Auto): automatic, if signal layers and dielectric Layers have same count, will be update by index. else will update by name and will be ignore if layer name not in layout
+        1(byIndex): by index, signal layers and dielectric Layers must have same count
+        2(byName): by layer name, if layer name not in layout will be ignore
+        3(force): force the layers same as layersInfo, signal layers count must have same count, dielectric Layers will override by layersInfo
+
+        更新一个或者多个层的信息用mode=2 byName
+        - 更新SURFACE层的厚度和Roughness信息 {Name: SURFACE,Thickness: 3.556e-05, Roughness: 0.5um,2.9um}
+        强制更新所有的金属层和介质层信息使用 mode=3 force，此时需要提供所有层的信息，当提供的金属层数量和当前设计中的金属层数量不一致时会报错，介质层会被强制覆盖。
+ 
         '''
         layersInfoTemps = []
         index = 0
@@ -1090,7 +1106,7 @@ class Layers(Definitions):
             else:
                 log.info("Remove layer with not valid input: %s"%str(layerDict))
                 
-        self.setLayerDatas(layersInfoTemps, mode=3)
+        self.setLayerDatas(layersInfoTemps, mode=mode)
     
             
     def loadFromCSV(self,csvPath):

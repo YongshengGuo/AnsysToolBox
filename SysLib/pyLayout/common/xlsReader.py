@@ -53,7 +53,7 @@ class _XlsxReader(object):
             else:
                 return value.strip()  # 去除字符串两端空格
         else:
-            return str(value)
+            return value
 
     def readSheet(self, sheet, header_row=1):
         """

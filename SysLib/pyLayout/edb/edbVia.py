@@ -9,7 +9,7 @@ pingroup for edb function
 import os,sys,re
 from ..common.common import *
 from ..common.complexDict import ComplexDict
-from ..primitive.geometry import Point,Polygen
+from ..primitive.geometry import Point,Polygon
 
 from .edbDefinition import EdbDefinition,EdbDefinitions
 
@@ -100,24 +100,16 @@ class EdbVia(EdbDefinition):
             return Point((lambda l:[l.X.ToDouble(),l.Y.ToDouble()])(rst[1]))
         else:
             return None
-        
+    
+    def getHoleDiameter(self):
+        rst = self.obj.GetHoleOverrideValue()
+        if rst[0]:
+            return rst[1].ToDouble()
+        else:
+            return None
 
     def GetName(self):
         return getViaName(self.obj,self.edbApp)
-
-#     def getPhysicallyConnected(self):
-#         layoutInst = self.edbApp.layout.GetLayoutInstance()
-#         layoutObjInst = layoutInst.GetLayoutObjInstance(self.obj, None)
-#         objs = [EdbDefinition(obj.GetLayoutObj(),type="Connectable") for obj in layoutInst.GetConnectedObjects(layoutObjInst).Items]
-# #         for each in layoutInst.GetConnectedObjects(layoutObjInst).Items:
-# #             obj = each.GetLayoutObj()
-# #             if obj.GetObjType() == self.edbApp.Edb.Cell.LayoutObjType.Primitive:
-# #                 objs.append(EdbPrimitive(obj,self.edbApp))
-# #             elif obj.GetObjType() == self.edbApp.Edb.Cell.LayoutObjType.PadstackInstance:
-# #                 objs.append(EdbVia(obj,self.edbApp))
-# #             else:
-# #                 pass
-#         return objs + [self]
 
 class EdbVias(EdbDefinitions):
 

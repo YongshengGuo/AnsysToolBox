@@ -29,6 +29,7 @@ from .common.licenseChecker import LicenseChecker
 
 from .options import options
 from .postData.solution import Solutions
+from .postData.touchStone import Touchstone
 
 from .model3D.HFSS import Aedt3DToolBase
 from .model3D.HFSS import HFSS

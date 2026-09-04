@@ -77,7 +77,7 @@ from .common.arrayStruct import ArrayStruct
 from .options import options
 
 from .primitive.primitive import Primitives,Objects3DL
-from .primitive.geometry import Polygen,Point
+from .primitive.geometry import Polygon,Point
 
 #log is a globle variable
 from .common import common
@@ -97,8 +97,10 @@ class Layout(object):
     '''
     #FindObjects 
     primitiveTypes = ['pin', 'via', 'rect','circle', 'arc', 'line', 'poly','plg', 'circle void','line void', 'rect void', 
-           'poly void', 'plg void', 'text', 'cell','Measurement', 'Port', 'component', 'CS', 'S3D', 'ViaGroup']
-    definitionTypes = ["Layer","Material","Setup","PadStack","ComponentDef","Variable","Net"]
+           'poly void', 'plg void', 'text', 'cell','Measurement', 'Port', 'component', 'CS', 'S3D', 'ViaGroup',"PinGroup","Source"]
+    definitionTypes = ["Layer","Material","Setup","PadStack","ComponentDef","Variable","ModelDef","ComponentDef","Net","Solution"]
+
+    otherType = ["AirBox"]
     
     def __init__(self, version=None, installDir=None,nonGraphical=False,newDesktop=False,usePyAedt=False,oDesktop = None):
         '''
@@ -389,7 +391,10 @@ class Layout(object):
     def getGrpcPort(self):
         return self.oDesktop.GetGrpcServerPort()
     
-    def getDesktopByGrpc(self,port=None, machine="localhost", process_id=None):
+    def getProcessID(self):
+        return self.oDesktop.GetProcessID()
+    
+    def getDesktopByGrpc(self,port=None, host="localhost", process_id=None):
         '''
         Use PyAEDT gRPC API to attach to an already running AEDT instance and return oDesktop.
 
@@ -397,7 +402,7 @@ class Layout(object):
             version (str|int|float, optional): AEDT version to target. Defaults to self.version.
             process_id (int, optional): AEDT process ID to attach to.
             port (int, optional): gRPC server port if connecting via a running gRPC server.
-            machine (str, optional): Hostname for gRPC connection, default is localhost.
+            host (str, optional): Hostname for gRPC connection, default is localhost.
 
         Returns:
             oDesktop object or None if connection fails.
@@ -418,7 +423,7 @@ class Layout(object):
             kwargs["aedt_process_id"] = int(process_id)
         if port is not None:
             kwargs["port"] = int(port)
-            kwargs["machine"] = machine
+            kwargs["machine"] = host  # pyaedt Desktop uses 'machine', not 'host'
 
         try:
             self.PyAedtApp = Desktop(**kwargs)
@@ -595,23 +600,22 @@ class Layout(object):
                         self.quitAedt()
                         log.error("Get first design error, please check license setup.")
                     
-                #make sure the design is 3DL
-                designtype = self._oDesign.GetDesignType()
-                if designtype != 'HFSS 3D Layout Design':
-                    # log.error("design type error, not 3D layout design.")  #exception if not 3DL design
-                    self._info.update("oDesign",self._oDesign)
-                    self._info.update("oEditor",self._oDesign.SetActiveEditor("3D Modeler"))
-                    self._info.update("DesignName", self.getDesignName(self._oDesign))
-                    self._info.update("DesignType", designtype)
-                    self._info.update("ToolType", designtype)
-                else:
-                    self._info.update("oDesign",self._oDesign)
-                    self._info.update("oEditor",self._oDesign.SetActiveEditor("Layout"))
-                    self._info.update("DesignName", self.getDesignName(self._oDesign))
-                    self._info.update("DesignType", designtype)
-                    self._info.update("ToolType", designtype)
+            #make sure the design is 3DL
+            designtype = self._oDesign.GetDesignType()
+            if designtype != 'HFSS 3D Layout Design':
+                self._info.update("oDesign",self._oDesign)
+                self._info.update("oEditor",self._oDesign.SetActiveEditor("3D Modeler"))
+                self._info.update("DesignName", self.getDesignName(self._oDesign))
+                self._info.update("DesignType", designtype)
+                self._info.update("ToolType", designtype)
+            else:
+                self._info.update("oDesign",self._oDesign)
+                self._info.update("oEditor",self._oDesign.SetActiveEditor("Layout"))
+                self._info.update("DesignName", self.getDesignName(self._oDesign))
+                self._info.update("DesignType", designtype)
+                self._info.update("ToolType", designtype)
                     
-            log.info("init design: %s : %s"%(self.projectName,self.designName))      
+            log.info("init design: %s : %s"%(self.projectName,self.DesignName))      
             
             if initObjects and self._info.oEditor:
                 #intial layout elements
@@ -651,8 +655,8 @@ class Layout(object):
         info.update("PadStacks", PadStacks(layout = self))
         info.update("ComponentDefs", ComponentDefs(layout = self))
         info.update("ModelDefs", ModelDefs(layout = self))
-        info.update("PinGroups", PinGroups(layout = self))
-        info.update("Sources", Sources(layout = self))
+        # info.update("PinGroups", PinGroups(layout = self))
+        # info.update("Sources", Sources(layout = self))
         info.update("AirBox", Airbox(layout = self))
         
 #         info.update("Primitives",Primitives(layout = self))
@@ -727,7 +731,7 @@ class Layout(object):
         solderOnComponents = {U1:(14mil,14mil),U2:None} #确定哪些位置长solderball
         次方法为完全实现，建议不要使用。
         '''
-        log.info("Merge layers from {layout2} to {layout1}".format(layout1=self.designName,layout2=layout2.designName))
+        log.info("Merge layers from {layout2} to {layout1}".format(layout1=self.DesignName,layout2=layout2.DesignName))
         layers2 = layout2.Layers
 #         solderHeight = "14mil"
 #         solderDiameter  = "14mil"
@@ -768,7 +772,7 @@ class Layout(object):
                 "StackupLayers:="    , copyLayersDsp,
                 "DrawLayers:="        , ["SIwave Regions:SIwave Regions","Measures:Measures","Outline:Outline","Rats:Rats","Errors:Errors","Symbols:Symbols","Postprocessing:Postprocessing"]
             ])
-        log.info("Finished copy {0} object to {1}".format(len(allObjs),self.designName))
+        log.info("Finished copy {0} object to {1}".format(len(allObjs),self.DesignName))
 
     def autoHFSSRegions(self):
         self.oEditor.GenerateSuggestedHFSSRegions()
@@ -946,29 +950,11 @@ class Layout(object):
     #---functions
     
     #---Create objects
-#     def addCircle(self,layer,location,r,name=None):
-#         lay = self.Layers[layer].Name
-#         loc = Point(location)
-#         ra = str(r)
-#         if not name:
-#             name = self.Circles.getUniqueName("circle_")
-#         log.info("Create Circle: %s"%name)
-#         name = self.oEditor.addCircle(
-#             [
-#                 "NAME:Contents",
-#                 "circleGeometry:="    , ["Name:=", name ,"LayerName:=", lay,"lw:=", "0","x:=", loc.x ,"y:=", loc.y ,"r:=",ra]
-#             ])
-#         
-#         self.Circles.push(name)
-#         self.Shapes.push(name)
-#         
-#         return name
-    
-    
+
     def addCircle(self,layerName,location,r,net=None,name=None):
         lay = self.Layers[layerName].Name
         loc = Point(location)
-        ra = str(r)
+        # ra = str(r)
         if not name:
             name = self.Circles.getUniqueName("circle_")
         log.info("Create Circle: %s"%(name))
@@ -976,13 +962,13 @@ class Layout(object):
         name = self.oEditor.CreateCircle(
             [
                 "NAME:Contents",
-                "circleGeometry:="    , ["Name:=", name ,"LayerName:=", lay,"lw:=", "0","x:=",0 ,"y:=", 0 ,"r:=", "1um"]
+                "circleGeometry:="    , ["Name:=", name ,"LayerName:=", lay,"lw:=", location.x,"x:=", location.x ,"y:=", location.y ,"r:=", r]
             ])
         
         self.Circles.push(name)
         obj = self.Circles[name]
-        obj.Center = location #"%s,%s"%(loc.x,loc.y)
-        obj.Radius = ra
+        # obj.Center = location #"%s,%s"%(loc.x,loc.y)
+        # obj.Radius = ra
         if net:
             obj.Net = net
         return obj
@@ -1003,12 +989,13 @@ class Layout(object):
         xyListTemp = []
         for i in range(len(pts)):
             xyListTemp.append("x:=")
-            xyListTemp.append(0)
+            # xyListTemp.append(0)
+            xyListTemp.append(pts[i].x)
             xyListTemp.append("y:=")
-            xyListTemp.append(0)
+            xyListTemp.append(pts[i].y)
         
         if not name:
-            name = self.Circles.getUniqueName("line_")
+            name = self.Lines.getUniqueName("line_")
         log.info("Create Line: %s"%name)
         name = self.layout.oEditor.CreateLine(
             [
@@ -1027,15 +1014,15 @@ class Layout(object):
         
         self.Lines.push(name)
         obj = Lines[name]
-        for i in range(len(pts)):
-            obj["Pt%s"%i] = pts[i]
+        # for i in range(len(pts)):
+        #     obj["Pt%s"%i] = pts[i]
         
         if net:
             obj.Net = net
             
         return obj
     
-    def addRectangle(self,layerName,ptA,ptB,net=None,name=None):
+    def addRectangle(self,layerName,ptA,ptB,cr="0mm",net=None,name=None):
         if not name:
             name = self.Circles.getUniqueName("rect_")
         log.info("Create Rectangle: %s"%name)
@@ -1046,15 +1033,15 @@ class Layout(object):
                 ["Name:=", "rect_0",
                  "LayerName:=", self.layout.Layers[layerName].Name,
                  "lw:=", "0",
-                 "Ax:=", "0mm","Ay:=", "0mm",
-                 "Bx:=", "0.1mm","By:=", "0.1mm",
-                 "cr:=", "0mm","ang:=", "0deg"]
+                 "Ax:=", ptA.x,"Ay:=", ptA.y,
+                 "Bx:=", ptB.x,"By:=", ptB.y,
+                 "cr:=", cr,"ang:=", "0deg"]
             ])
         
         self.Rects.push(name)
         obj = self.Rects[name]
-        obj.PtA = ptA 
-        obj.PtB = ptB
+        # obj.PtA = ptA 
+        # obj.PtB = ptB
         if net:
             obj.Net = net
         
@@ -1074,9 +1061,9 @@ class Layout(object):
         xyListTemp = []
         for i in range(len(pts)):
             xyListTemp.append("x:=")
-            xyListTemp.append(0)
+            xyListTemp.append(pts[i].x)
             xyListTemp.append("y:=")
-            xyListTemp.append(0)
+            xyListTemp.append(pts[i].y)
         if not name:
             name = self.Circles.getUniqueName("poly_")
         log.info("Create poly: %s"%name)
@@ -1087,15 +1074,14 @@ class Layout(object):
             "polyGeometry:=", 
             ["Name:=", "poly_0",     
             "LayerName:=", self.layout.Layers[layerName].Name,
-            "lw:=", "0","n:=", 6,
+            "lw:=", "0","n:=", len(pts),
             "U:=", self.layout.unit]  + xyListTemp
-    #         "x:=", -1,"y:=", -25,"x:=", -11,"y:=", -41,"x:=", -4,"y:=", -49,"x:=", 37,"y:=", -50,"x:=", 24,"y:=", -21,"x:=", 11,"y:=", -29,"x:=", -1,"y:=", -25]
-        ])
+         ])
         
         self.Polys.push(name)
         obj = self.Polys[name]
-        for i in range(len(pts)):
-            obj["Pt%s"%i] = pts[i]
+        # for i in range(len(pts)):
+        #     obj["Pt%s"%i] = pts[i]
             
         if net:
             obj.Net = net
@@ -1120,10 +1106,10 @@ class Layout(object):
                 "NAME:Contents",
                 "name:="        , name,
                 "ReferencedPadstack:="    , padStack,
-                "vposition:="        , ["x:=", "0mm","y:=", "0mm"],
+                "vposition:="        , ["x:=", pos.x,"y:=", pos.y],
                 "vrotation:="        , ["0deg"],
                 "overrides hole:="    , False,
-                "hole diameter:="    , ["0.1mm"],
+                "hole diameter:="    , [hole],
                 "Pin:="            , isPin,
                 "highest_layer:="    , upperLayer,
                 "lowest_layer:="    , lowerLayer
@@ -1142,9 +1128,180 @@ class Layout(object):
             self.Vias.push(name)
             obj = self.Vias[name]
             
-        obj.Location = Point(position)
-        obj.HoleDiameter = hole
+        # obj.Location = Point(position)
+        # obj.HoleDiameter = hole
         return obj
+
+    def _getVoidOwner(self, owner):
+        if isinstance(owner, str):
+            return self.Shapes[owner]
+        if hasattr(owner, "Name"):
+            return owner
+        log.exception("owner must be polygon name or object: %s" % str(owner))
+
+    def addCircleVoid(self, owner, location, r, name=None):
+        ownerObj = self._getVoidOwner(owner)
+        ownerName = ownerObj.Name
+        lay = ownerObj.PlacementLayer
+        loc = Point(location)
+
+        if not name:
+            try:
+                name = self.Voids.getUniqueName("circle void_")
+            except Exception:
+                name = "circle void_0"
+
+        log.info("Create circle void: %s" % name)
+        name = self.oEditor.CreateCircleVoid(
+            [
+                "NAME:Contents",
+                "owner:=", ownerName,
+                "circle voidGeometry:=", [
+                    "Name:=", name,
+                    "LayerName:=", lay,
+                    "lw:=", "0",
+                    "x:=", loc.x,
+                    "y:=", loc.y,
+                    "r:=", r,
+                ]
+            ])
+        self.Voids.refresh()
+        try:
+            return self.Voids[name]
+        except Exception:
+            return name
+
+    def addPolygonVoid(self, owner, points, width="0", name=None):
+        if not points or len(points) < 3:
+            log.exception("Points of polygon void must have 3 points")
+
+        ownerObj = self._getVoidOwner(owner)
+        ownerName = ownerObj.Name
+        lay = ownerObj.PlacementLayer
+        pUnit = self.layout.unit
+        pts = [Point(p) for p in points]
+
+        if pts[0].distanceFromPoint(pts[-1]) > 1e-18:
+            pts.append(Point(pts[0]))
+
+        xyList = []
+        for pt in pts:
+            xyList.append("x:=")
+            xyList.append(pt.x)
+            xyList.append("y:=")
+            xyList.append(pt.y)
+
+        if not name:
+            try:
+                name = self.Voids.getUniqueName("poly void_")
+            except Exception:
+                name = "poly void_0"
+
+        log.info("Create polygon void: %s" % name)
+        name = self.oEditor.CreatePolygonVoid(
+            [
+                "NAME:Contents",
+                "owner:=", ownerName,
+                "poly voidGeometry:=", [
+                    "Name:=", name,
+                    "LayerName:=", lay,
+                    "lw:=", width,
+                    "n:=", len(pts) - 1,
+                    "U:=", pUnit,
+                ] + xyList
+            ])
+        self.Voids.refresh()
+        try:
+            return self.Voids[name]
+        except Exception:
+            return name
+
+    def addLineVoid(self, owner, points, width="0.1mm", name=None, mr=None):
+        if not points or len(points) < 2:
+            log.exception("Points of line void must have 2 points")
+
+        ownerObj = self._getVoidOwner(owner)
+        ownerName = ownerObj.Name
+        lay = ownerObj.PlacementLayer
+        pUnit = self.layout.unit
+        pts = [Point(p) for p in points]
+
+        xyList = []
+        for pt in pts:
+            xyList.append("x:=")
+            xyList.append(pt.x)
+            xyList.append("y:=")
+            xyList.append(pt.y)
+
+        if not name:
+            try:
+                name = self.Voids.getUniqueName("line void_")
+            except Exception:
+                name = "line void_0"
+
+        lineGeometry = [
+            "Name:=", name,
+            "LayerName:=", lay,
+            "lw:=", width,
+            "endstyle:=", 0,
+            "StartCap:=", 0,
+            "EndCap:=", 0,
+            "n:=", len(pts),
+            "U:=", pUnit,
+        ] + xyList
+        if mr is not None:
+            lineGeometry += ["MR:=", mr]
+
+        log.info("Create line void: %s" % name)
+        name = self.oEditor.CreateLineVoid(
+            [
+                "NAME:Contents",
+                "owner:=", ownerName,
+                "line voidGeometry:=", lineGeometry
+            ])
+        self.Voids.refresh()
+        try:
+            return self.Voids[name]
+        except Exception:
+            return name
+
+    def addRectangleVoid(self, owner, ptA, ptB, cr=None, name=None):
+        ownerObj = self._getVoidOwner(owner)
+        ownerName = ownerObj.Name
+        lay = ownerObj.PlacementLayer
+        pUnit = self.layout.unit
+        p1 = Point(ptA)
+        p2 = Point(ptB)
+
+        if not name:
+            try:
+                name = self.Voids.getUniqueName("rect void_")
+            except Exception:
+                name = "rect void_0"
+
+        log.info("Create rectangle void: %s" % name)
+        name = self.oEditor.CreateRectangleVoid(
+            [
+                "NAME:Contents",
+                "owner:=", ownerName,
+                "rect voidGeometry:=", [
+                    "Name:=", name,
+                    "LayerName:=", lay,
+                    "lw:=", "0",
+                    "Ax:=", p1.x,
+                    "Ay:=", p1.y,
+                    "Bx:=", p2.x,
+                    "By:=", p2.y,
+                ]
+            ])
+        if cr is not None:
+            self.oEditor.SetPropertyValue("BaseElementTab", name, "CornerRadius", cr)
+        
+        self.Voids.refresh()
+        try:
+            return self.Voids[name]
+        except Exception:
+            return name
     
     def sanitize(self,nets):
         log.info("SanitizeLayout "+",".join(nets))
@@ -1239,7 +1396,33 @@ class Layout(object):
     
     def loadLayout(self,layoutPath ,edbOutPath = None,controlFile = "", layoutType = None, extractExePath = None):
         '''
-        doc
+        Load and import a layout file into AEDT.
+        
+        Supports multiple layout formats: AEDT, EDB, Cadence, ODB++, IPC, and GDS.
+        Automatically detects layout type from file extension if not specified.
+        
+        Supported file extensions:
+            - Cadence: .brd, .mcm, .sip
+            - SIwave: .siw
+            - AEDT: .aedt, .aedtz
+            - EDB: .aedb, edb.def
+            - ODB++: .tgz
+            - IPC: .xml
+            - GDS: .gds
+        
+        Args:
+            layoutPath (str): Path to the layout file to load.
+            edbOutPath (str, optional): Output path for converted EDB file. Defaults to None.
+            controlFile (str, optional): Path to control file for translation. Defaults to "".
+            layoutType (str, optional): Type of layout file (AEDT, EDB, Cadence, ODB++, IPC, GDS). 
+                                       Auto-detected if not specified. Defaults to None.
+            extractExePath (str, optional): Path to extraction executable directory. Defaults to None.
+            
+        Returns:
+            None
+            
+        Raises:
+            Exception: If layout type cannot be determined from file extension.
         '''
    
         if not layoutType:
@@ -1279,7 +1462,7 @@ class Layout(object):
         if layoutType.lower() == "aedt":
             self.openAedt(layoutPath)
         elif layoutType.lower() == "edb":
-            self.importEBD(layoutPath)
+            self.importEdb(layoutPath)
         elif layoutType.lower() == "cadence":
             if not edbOutPath:
                 edbOutPath = layoutPath[:-4] + ".aedb"
@@ -1287,7 +1470,7 @@ class Layout(object):
                 controlFile = ""
             self.importBrd(layoutPath,edbOutPath,controlFile)
 #             edbout = self.translateLayout(layoutPath,edbOutPath,controlFile)
-#             self.importEBD(edbout)
+#             self.importEdb(edbout)
         elif layoutType.lower() == "odb++":
             if not edbOutPath:
                 edbOutPath = layoutPath[:-4] + ".aedb"
@@ -1308,7 +1491,7 @@ class Layout(object):
         else:
             raise Exception("Unknow layout type")
     
-    def importEBD(self,path):
+    def importEdb(self,path):
         if path[-4:] == "aedb":
             path = os.path.join(path,"edb.def")
             
@@ -1321,7 +1504,7 @@ class Layout(object):
 
         log.info("load edb : %s"%path)
         oTool = self.oDesktop.GetTool("ImportExport")
-        oTool.ImportEDB(path)
+        oTool.importEdb(path)
         self.initDesign()
         
     def importBrd(self,path,edbPath = None, controlFile = ""):
@@ -1399,7 +1582,7 @@ class Layout(object):
             for line in output:
                 log.info(line)
             output.close()
-        self.importEBD(edbPath)
+        self.importEdb(edbPath)
          
 
     def exportGDS(self,path=None,outLayerMapPath = None):
@@ -1497,7 +1680,7 @@ class Layout(object):
         self.oProject.Close()
         if os.path.exists(aedtPath):
             os.remove(aedtPath)
-        self.importEBD(edbPath)
+        self.importEdb(edbPath)
         self.initDesign(projectName=os.path.splitext(os.path.basename(aedtPath))[0])
 
     def saveAs(self,path,OverWrite=True):
@@ -1657,7 +1840,15 @@ class Layout(object):
             self._oProject = None
         except Exception:
             log.info("Issue to close project, maybe the project have been closed.")
-            
+    
+    def deleteResults(self):
+        if os.path.exists(self.resultsPath):
+            log.info("delete project results: %s"%self.resultsPath)
+            try:
+                shutil.rmtree(self.resultsPath)
+            except Exception:
+                log.info("delete project results error, maybe the project is not closed.")
+    
     def deleteFromDisk(self):
         log.info("delete project from disk: %s"%self.ProjectPath)
         self.oDesktop.DeleteProject(self.projectName)
@@ -1966,6 +2157,12 @@ class Layout(object):
             self.oDesktop.AddMessage("","",level,msg)
         except Exception:
             pass
+    
+    def undo(self):
+        self.oDesign.Undo()
+
+    def redo(self):
+        self.oDesign.Redo()
 
     def message(self,msg,level = 0):
         self.addAedtmessage(msg,level)
@@ -2039,22 +2236,3 @@ if __name__ == '__main__':
 #     layout = Layout("2022.2")
     layout = Layout("2023.2")
     layout.initDesign()
-    layout.via1062
-    layout.port[0]
-    U8 = layout["Component:U8"]
-    U9 = layout["Component:U8"]
-    a= layout.Copper
-    a["Resistivity"]= 1.0e-08
-    layout.Layers.addLayer("L0")
-    pins = U8.Pins
-    layout.Port1
-    pin = layout["U8_1"]
-    dir(U8)
-    pin = layout["Pin:U8-1"]
-#     top = layout["Layer:C:0"]
-    fr4= layout.Materials["FR4_epoxy"]
-#     rst = layout.Solutions.getAllSetupSolution()
-#     layout.Variables.test
-    layout.release()
-#     rst[0].exportSNP("c:\work\1.txt")
-    pass

@@ -6,6 +6,7 @@
 支持单位量纲运算
 
 Support unit dimensional operations
+value × prefix × unit, 5Ghz, 100Mhz, 1Km
 
 Examples:
 
@@ -285,7 +286,7 @@ class Unit(object):
         return abs(self.V)
     
     def converToExpression(self,s):
-        #"60Gps+5m-2pf"
+        #"60Gps+5m-2pf" ->600e-9+ 5e-3-2e-12
         if not isinstance(self._value, str):
             return s
         #pre replace

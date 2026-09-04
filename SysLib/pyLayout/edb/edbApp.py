@@ -24,19 +24,7 @@ appPath = os.path.realpath(__file__)
 appDir = os.path.split(appPath)[0] 
 sys.path.append(appDir)
 
-#for python
-# if not isPython or is_linux:
-# if isIronpython:
-#     import clr as _clr # @UnresolvedImport
-# elif is_linux:
-#     try:
-#         from ansys.aedt.core.generic.clr_module import _clr # @UnresolvedImport
-#     except:
-#         log.info("Make sure pyaedt have installed on linux: pip install pyaedt")
-#         from ansys.aedt.core.internal.clr_module import _clr # @UnresolvedImport
-# else:
-#     #for windows
-#     import clr as _clr # @UnresolvedImport
+
 try:
     _clr = initClr()
     from System import String
@@ -166,11 +154,11 @@ def initEdb(version=None, installDir=None):
 
 class EdbApp(object):
     
-    def __init__(self,edbpath=None,version=None,installDir=None):
+    def __init__(self,edbPath=None,version=None,installDir=None):
 
         self.maps = {
             "InstallPath":"InstallDir",
-            "Path":"Edbpath",
+            "Path":"edbPath",
             "Name":"DesignName",
             "Ver":"Version",
             "Comps":"Components"
@@ -179,7 +167,7 @@ class EdbApp(object):
         self._info = ComplexDict({
             "Version":version,
             "InstallDir":installDir,
-            "Edbpath":edbpath,
+            "edbPath":edbPath,
             "db":None,
             "cell":None,
             "layout":None,
@@ -191,8 +179,8 @@ class EdbApp(object):
             },maps=self.maps)
         self._info.update("Log", log)
 
-        if edbpath:
-            self.open(edbpath)
+        if edbPath:
+            self.open(edbPath)
 
     def __del__(self):
         """
@@ -320,7 +308,6 @@ class EdbApp(object):
                 
         return self.edb
         
-        
     def setLogPath(self,path):
         self.LogPath = path
         try:
@@ -346,8 +333,8 @@ class EdbApp(object):
         self._info.update("NetClass", EdbNetClasses(self))
         
 
-        self._info.update("EdbPath", os.path.abspath(self.db.GetDirectory()))
-        split = os.path.split(self._info.EdbPath)
+        self._info.update("edbPath", os.path.abspath(self.db.GetDirectory()))
+        split = os.path.split(self._info.edbPath)
         self._info.update("ProjectName",split[1][:-5])
         self._info.update("projectDir",split[0])
         self._info.update("ProjectPath", split[0])
@@ -369,30 +356,30 @@ class EdbApp(object):
             switchLogPath(logger1, path)
             log.info("Simulation log recorded in: %s"%path)
 
-    def open(self,edbpath=None):
+    def open(self,edbPath=None):
 
         """
         Open and initialize from edbFN.
         First of db.TopCircuitCells is set active in this object
         """
-        if not edbpath:
-            edbpath = self.edbpath
+        if not edbPath:
+            edbPath = self.edbPath
         else:
-            self.edbpath = edbpath
-        if not os.path.exists(edbpath):
-            log.exception('Edb could not be found at "{0}"'.format(edbpath))
+            self.edbPath = edbPath
+        if not os.path.exists(edbPath):
+            log.exception('Edb could not be found at "{0}"'.format(edbPath))
             return False
-        log.info("Open Edb: %s"%edbpath)
+        log.info("Open Edb: %s"%edbPath)
         self.Edb.Database.SetRunAsStandAlone(True)
-        self.db = self.Edb.Database.Open(edbpath, False)
+        self.db = self.Edb.Database.Open(edbPath, False)
         if self.db.IsNull():
-            log.exception('Edb could not be opened at "{0}"'.format(edbpath))
+            log.exception('Edb could not be opened at "{0}"'.format(edbPath))
             return False
         cells = list(self.db.TopCircuitCells)
         if cells:
             self.cell = cells[0]
         if self.cell and self.cell.IsNull():
-            log.exception('TopCircuitCell could not be found'.format(edbpath))
+            log.exception('TopCircuitCell could not be found'.format(edbPath))
             return False
         self.layout = self.cell.GetLayout()
         self.initLayout()
@@ -507,6 +494,9 @@ class EdbApp(object):
                 return True
         return False
 
+    #--- find objects features
+    
+
     def removeObj(self,obj,objs):
         id1 = obj.GetId()
         flag = False
@@ -561,16 +551,16 @@ class EdbApp(object):
             output.close()
         self.open(edbPath)
 
-    def exportSiwave(self,edbpath=None,path=None):
-        edbpath = edbpath or self.edbpath
-        return edbToSIwave(edbpath, path,self.installDir)
+    def exportSiwave(self,edbPath=None,path=None):
+        edbPath = edbPath or self.edbPath
+        return edbToSIwave(edbPath, path,self.installDir)
     
     def deleteFromDisk(self):
         if self.db and not self.db.IsNull():
             self.db.Close()
-        if os.path.exists(self.edbpath):
-            log.info("delete EDB from disk: %s"%self.edbpath)
-            shutil.rmtree(self.edbpath)
+        if os.path.exists(self.edbPath):
+            log.info("delete EDB from disk: %s"%self.edbPath)
+            shutil.rmtree(self.edbPath)
             
         if os.path.exists(self.resultsPath):
             log.info("delete project from disk: %s"%self.resultsPath)
@@ -581,7 +571,7 @@ class EdbApp(object):
             os.remove(self.AedtPath)
     
     def copyAs(self,target):
-        return self.copyEdb(self.edbpath,target)
+        return self.copyEdb(self.edbPath,target)
     
     @classmethod
     def copyEdb(cls,source,target):
@@ -655,7 +645,7 @@ class EdbApp(object):
 if __name__ == "__main__":
     pass
 #     from ansys.aedt.core import Edb
-#     edbapp = Edb(edbpath=r"C:\work\Project\AE\Script\PSI\PSI_automation_testCase\edb\SIWAVE_PDN_TEST_0716_group1.aedb", 
+#     edbapp = Edb(edbPath=r"C:\work\Project\AE\Script\PSI\PSI_automation_testCase\edb\SIWAVE_PDN_TEST_0716_group1.aedb", 
 #         edbversion="2024.2")
 #     siwave_id = edbapp.edb_api.ProductId.SIWave
 #     cell = edbapp.active_cell._active_cell
